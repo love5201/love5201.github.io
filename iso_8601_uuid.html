@@ -1,0 +1,882 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ISO 8601 自定义 UUID 生成器</title>
+  <!-- 引入 Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- 引入 Google Fonts: Inter 与 JetBrains Mono -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', '-apple-system', 'BlinkMacSystemFont', 'sans-serif'],
+            mono: ['JetBrains Mono', 'ui-monospace', 'SFMono-Regular', 'monospace'],
+          },
+        },
+      },
+    };
+  </script>
+</head>
+<body class="min-h-screen bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100 transition-colors duration-200 antialiased">
+  <!-- 顶部浮动提示 Toast -->
+  <div id="toast-container" class="fixed top-4 right-4 z-50 flex flex-col gap-2 pointer-events-none"></div>
+
+  <!-- 主容器 -->
+  <div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-10">
+    <!-- 顶部导航栏 -->
+    <header class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-6 border-b border-slate-200 dark:border-slate-800">
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-xl bg-indigo-600 text-white flex items-center justify-center shadow-md shadow-indigo-600/20 shrink-0">
+          <!-- 时钟 + 标识图标 -->
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+        </div>
+        <div>
+          <h1 class="text-xl sm:text-2xl font-bold tracking-tight">ISO 8601 自定义 UUID 生成器</h1>
+          <p class="text-xs sm:text-sm text-slate-500 dark:text-slate-400">
+            支持紧凑格式 (<code class="font-mono text-indigo-600 dark:text-indigo-400">20261126T0230320800_824</code>) 与标准 ISO 8601 格式
+          </p>
+        </div>
+      </div>
+
+      <div class="flex items-center gap-3 self-start sm:self-auto">
+        <!-- 实时时钟徽章 -->
+        <div class="px-3 py-1.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-xs font-mono text-slate-600 dark:text-slate-300 shadow-sm">
+          <span class="inline-block w-2 h-2 rounded-full bg-emerald-500 mr-1.5 animate-pulse"></span>
+          <span id="live-clock">--:--:--</span>
+        </div>
+        <!-- 主题切换按钮 -->
+        <button
+          id="btn-theme-toggle"
+          type="button"
+          aria-label="切换明暗主题"
+          class="p-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition shadow-sm"
+        >
+          <svg id="icon-sun" class="w-5 h-5 hidden dark:block" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
+          </svg>
+          <svg id="icon-moon" class="w-5 h-5 block dark:hidden" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
+          </svg>
+        </button>
+      </div>
+    </header>
+
+    <!-- 主体内容网格 -->
+    <main class="mt-6 grid grid-cols-1 lg:grid-cols-12 gap-6">
+      <!-- 左侧：单条生成 + 批量生成 + 代码预览 -->
+      <div class="lg:col-span-8 flex flex-col gap-6">
+        <!-- 1. 单条即时生成卡片 -->
+        <section class="p-5 sm:p-6 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm">
+          <div class="flex flex-wrap items-center justify-between gap-2 mb-4">
+            <span class="text-xs font-semibold uppercase tracking-wider text-indigo-600 dark:text-indigo-400">
+              即时单条生成
+            </span>
+            <span id="format-badge" class="text-xs font-mono px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
+              YYYYMMDDTHHmmss+HHMM_3位随机数
+            </span>
+          </div>
+
+          <!-- 生成结果显示框 -->
+          <div class="p-4 sm:p-5 rounded-xl bg-slate-100/80 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 flex items-center justify-between gap-3">
+            <code
+              id="single-uuid-display"
+              class="font-mono text-lg sm:text-2xl font-semibold text-slate-900 dark:text-white break-all select-all"
+            >
+              20261126T0855000800_824
+            </code>
+            <button
+              id="btn-copy-single"
+              type="button"
+              title="复制当前 UUID"
+              class="p-3 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-indigo-50 dark:hover:bg-indigo-950/50 hover:text-indigo-600 dark:hover:text-indigo-400 transition shrink-0 shadow-sm"
+            >
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+              </svg>
+            </button>
+          </div>
+
+          <!-- 操作按钮组 -->
+          <div class="mt-4 flex flex-wrap items-center gap-3">
+            <button
+              id="btn-generate-single"
+              type="button"
+              class="flex-1 sm:flex-none px-5 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-700 active:scale-[0.99] text-white font-medium text-sm flex items-center justify-center gap-2 shadow-sm shadow-indigo-600/20 transition"
+            >
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+              <span>重新生成</span>
+            </button>
+
+            <button
+              id="btn-generate-and-copy"
+              type="button"
+              class="flex-1 sm:flex-none px-5 py-3 rounded-xl bg-slate-900 dark:bg-slate-800 hover:bg-slate-800 dark:hover:bg-slate-700 active:scale-[0.99] text-white font-medium text-sm flex items-center justify-center gap-2 transition"
+            >
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
+              </svg>
+              <span>生成并复制</span>
+            </button>
+          </div>
+        </section>
+
+        <!-- 2. 批量生成面板 -->
+        <section class="p-5 sm:p-6 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm">
+          <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
+            <div>
+              <h2 class="text-base font-semibold">批量生成</h2>
+              <p class="text-xs text-slate-500 dark:text-slate-400">单次最多支持生成 500 条独立随机后缀的 ID</p>
+            </div>
+
+            <div class="flex flex-wrap items-center gap-2">
+              <label for="batch-count" class="text-xs text-slate-500 dark:text-slate-400">数量:</label>
+              <input
+                id="batch-count"
+                type="number"
+                min="1"
+                max="500"
+                value="10"
+                class="w-20 px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              />
+              <button
+                id="btn-batch-generate"
+                type="button"
+                class="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium transition"
+              >
+                批量生成
+              </button>
+            </div>
+          </div>
+
+          <!-- 批量结果工具栏 -->
+          <div class="flex items-center justify-between gap-2 mb-2">
+            <span id="batch-status" class="text-xs text-slate-500 dark:text-slate-400">尚未生成批量数据</span>
+            <div class="flex items-center gap-2">
+              <button
+                id="btn-copy-batch"
+                type="button"
+                class="px-3 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-xs font-medium transition"
+              >
+                复制全部
+              </button>
+              <button
+                id="btn-download-batch"
+                type="button"
+                class="px-3 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-xs font-medium transition"
+              >
+                导出 TXT
+              </button>
+            </div>
+          </div>
+
+          <textarea
+            id="batch-output"
+            rows="6"
+            readonly
+            placeholder="点击「批量生成」按钮，在此处查看多行生成结果..."
+            class="w-full p-3.5 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 font-mono text-xs sm:text-sm text-slate-800 dark:text-slate-200 focus:outline-none resize-y"
+          ></textarea>
+        </section>
+
+        <!-- 3. 同步 JavaScript 代码参考 -->
+        <section class="p-5 sm:p-6 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm">
+          <div class="flex items-center justify-between gap-2 mb-3">
+            <div>
+              <h2 class="text-base font-semibold">JavaScript 实现代码</h2>
+              <p class="text-xs text-slate-500 dark:text-slate-400">随右侧格式与位数参数实时更新，可直接复制到项目中</p>
+            </div>
+            <button
+              id="btn-copy-code"
+              type="button"
+              class="px-3.5 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-xs font-medium flex items-center gap-1.5 transition"
+            >
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+              </svg>
+              <span>复制代码</span>
+            </button>
+          </div>
+          <pre class="p-4 rounded-xl bg-slate-950 text-slate-100 font-mono text-xs leading-relaxed overflow-x-auto border border-slate-800"><code id="code-preview"></code></pre>
+        </section>
+      </div>
+
+      <!-- 右侧：参数配置 + 生成历史 -->
+      <div class="lg:col-span-4 flex flex-col gap-6">
+        <!-- 参数配置卡片 -->
+        <section class="p-5 sm:p-6 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm">
+          <h2 class="text-base font-semibold mb-4">格式参数配置</h2>
+
+          <div class="space-y-5">
+            <!-- 时间格式切换 -->
+            <div>
+              <label class="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-2">时间字符串格式</label>
+              <div class="grid grid-cols-1 gap-2">
+                <button
+                  id="btn-fmt-compact"
+                  type="button"
+                  class="px-3.5 py-2.5 rounded-xl border text-left transition flex items-center justify-between"
+                >
+                  <div>
+                    <div class="text-xs font-semibold">紧凑 ISO 8601 (推荐)</div>
+                    <div class="text-[11px] font-mono opacity-80">20261126T0230320800_824</div>
+                  </div>
+                  <span class="fmt-dot w-2.5 h-2.5 rounded-full"></span>
+                </button>
+
+                <button
+                  id="btn-fmt-standard"
+                  type="button"
+                  class="px-3.5 py-2.5 rounded-xl border text-left transition flex items-center justify-between"
+                >
+                  <div>
+                    <div class="text-xs font-semibold">标准 ISO 8601</div>
+                    <div class="text-[11px] font-mono opacity-80">2026-11-26T02:30:32+08:00_824</div>
+                  </div>
+                  <span class="fmt-dot w-2.5 h-2.5 rounded-full"></span>
+                </button>
+              </div>
+            </div>
+
+            <!-- 时区模式 -->
+            <div>
+              <label class="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-2">时区基准</label>
+              <div class="grid grid-cols-2 gap-2">
+                <button
+                  id="btn-tz-local"
+                  type="button"
+                  class="px-3 py-2.5 rounded-xl border text-xs font-medium transition"
+                >
+                  本地时区
+                </button>
+                <button
+                  id="btn-tz-utc"
+                  type="button"
+                  class="px-3 py-2.5 rounded-xl border text-xs font-medium transition"
+                >
+                  UTC 零时区
+                </button>
+              </div>
+            </div>
+
+            <!-- 随机数位数 -->
+            <div>
+              <div class="flex items-center justify-between mb-2">
+                <label for="digits-range" class="text-xs font-medium text-slate-600 dark:text-slate-400">后缀随机数位数</label>
+                <span id="digits-label" class="text-xs font-mono font-semibold text-indigo-600 dark:text-indigo-400">3 位 (000–999)</span>
+              </div>
+              <input
+                id="digits-range"
+                type="range"
+                min="1"
+                max="8"
+                value="3"
+                class="w-full accent-indigo-600 cursor-pointer"
+              />
+              <div class="flex justify-between text-[11px] font-mono text-slate-400 mt-1">
+                <span>1</span>
+                <span>2</span>
+                <span>3</span>
+                <span>4</span>
+                <span>5</span>
+                <span>6</span>
+                <span>7</span>
+                <span>8</span>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- 最近生成历史卡片 -->
+        <section class="p-5 sm:p-6 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm flex-1 flex flex-col">
+          <div class="flex items-center justify-between mb-3">
+            <h2 class="text-base font-semibold">最近生成记录</h2>
+            <button
+              id="btn-clear-history"
+              type="button"
+              class="text-xs text-slate-500 hover:text-rose-500 dark:text-slate-400 dark:hover:text-rose-400 transition"
+            >
+              清空
+            </button>
+          </div>
+
+          <ul id="history-list" class="space-y-2 overflow-y-auto max-h-80 pr-1">
+            <!-- 动态填充历史记录 -->
+          </ul>
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <script>
+    (function () {
+      "use strict";
+
+      const STORAGE_KEY_HISTORY = "custom_iso_uuid_history_v2";
+      const STORAGE_KEY_THEME = "custom_iso_uuid_theme_v1";
+
+      // 应用全局状态
+      const state = {
+        format: "compact", // "compact" | "standard"
+        tzMode: "local",   // "local" | "utc"
+        digits: 3,         // 1 ~ 8
+        history: []
+      };
+
+      // 缓存 DOM 节点
+      const els = {
+        liveClock: document.getElementById("live-clock"),
+        btnThemeToggle: document.getElementById("btn-theme-toggle"),
+        formatBadge: document.getElementById("format-badge"),
+        singleUuidDisplay: document.getElementById("single-uuid-display"),
+        btnCopySingle: document.getElementById("btn-copy-single"),
+        btnGenerateSingle: document.getElementById("btn-generate-single"),
+        btnGenerateAndCopy: document.getElementById("btn-generate-and-copy"),
+        batchCount: document.getElementById("batch-count"),
+        btnBatchGenerate: document.getElementById("btn-batch-generate"),
+        batchStatus: document.getElementById("batch-status"),
+        btnCopyBatch: document.getElementById("btn-copy-batch"),
+        btnDownloadBatch: document.getElementById("btn-download-batch"),
+        batchOutput: document.getElementById("batch-output"),
+        codePreview: document.getElementById("code-preview"),
+        btnCopyCode: document.getElementById("btn-copy-code"),
+        btnFmtCompact: document.getElementById("btn-fmt-compact"),
+        btnFmtStandard: document.getElementById("btn-fmt-standard"),
+        btnTzLocal: document.getElementById("btn-tz-local"),
+        btnTzUtc: document.getElementById("btn-tz-utc"),
+        digitsRange: document.getElementById("digits-range"),
+        digitsLabel: document.getElementById("digits-label"),
+        historyList: document.getElementById("history-list"),
+        btnClearHistory: document.getElementById("btn-clear-history"),
+        toastContainer: document.getElementById("toast-container")
+      };
+
+      /**
+       * 数字补零辅助函数
+       */
+      function padZero(num, len) {
+        return String(Math.floor(Math.abs(num))).padStart(len || 2, "0");
+      }
+
+      /**
+       * 格式化 ISO 8601 时间部分
+       * - compact + local: 20261126T0230320800 (负时区带负号如 -0500)
+       * - compact + utc:   20261125T183032Z
+       * - standard + local: 2026-11-26T02:30:32+08:00
+       * - standard + utc:   2026-11-25T18:30:32Z
+       */
+      function formatIsoTimestamp(date, mode, format) {
+        if (mode === "utc") {
+          const y = date.getUTCFullYear();
+          const m = padZero(date.getUTCMonth() + 1, 2);
+          const d = padZero(date.getUTCDate(), 2);
+          const hh = padZero(date.getUTCHours(), 2);
+          const mm = padZero(date.getUTCMinutes(), 2);
+          const ss = padZero(date.getUTCSeconds(), 2);
+
+          if (format === "compact") {
+            return y + m + d + "T" + hh + mm + ss + "Z";
+          }
+          return y + "-" + m + "-" + d + "T" + hh + ":" + mm + ":" + ss + "Z";
+        }
+
+        const y = date.getFullYear();
+        const m = padZero(date.getMonth() + 1, 2);
+        const d = padZero(date.getDate(), 2);
+        const hh = padZero(date.getHours(), 2);
+        const mm = padZero(date.getMinutes(), 2);
+        const ss = padZero(date.getSeconds(), 2);
+
+        const offsetMin = -date.getTimezoneOffset();
+        const absMin = Math.abs(offsetMin);
+        const tzH = padZero(Math.floor(absMin / 60), 2);
+        const tzM = padZero(absMin % 60, 2);
+
+        if (format === "compact") {
+          const sign = offsetMin >= 0 ? "" : "-";
+          return y + m + d + "T" + hh + mm + ss + sign + tzH + tzM;
+        }
+
+        const sign = offsetMin >= 0 ? "+" : "-";
+        return y + "-" + m + "-" + d + "T" + hh + ":" + mm + ":" + ss + sign + tzH + ":" + tzM;
+      }
+
+      /**
+       * 生成自定义 UUID
+       */
+      function generateCustomId(options) {
+        const opts = options || {};
+        const digits = opts.digits || state.digits;
+        const mode = opts.mode || state.tzMode;
+        const format = opts.format || state.format;
+        const date = opts.date || new Date();
+
+        const isoPart = formatIsoTimestamp(date, mode, format);
+        const max = Math.pow(10, digits);
+        let randNum = 0;
+
+        if (window.crypto && window.crypto.getRandomValues) {
+          const array = new Uint32Array(1);
+          window.crypto.getRandomValues(array);
+          randNum = array[0] % max;
+        } else {
+          randNum = Math.floor(Math.random() * max);
+        }
+
+        const randPart = String(randNum).padStart(digits, "0");
+        return isoPart + "_" + randPart;
+      }
+
+      /**
+       * 浮动提示消息
+       */
+      function showToast(message, type) {
+        const toast = document.createElement("div");
+        const isError = type === "error";
+        toast.className = [
+          "pointer-events-auto px-4 py-2.5 rounded-xl text-xs sm:text-sm font-medium shadow-lg border transition-all duration-200 transform translate-y-0 opacity-100",
+          isError
+            ? "bg-rose-600 text-white border-rose-500"
+            : "bg-slate-900 dark:bg-slate-800 text-white border-slate-700"
+        ].join(" ");
+        toast.textContent = message;
+        els.toastContainer.appendChild(toast);
+
+        setTimeout(function () {
+          toast.classList.add("opacity-0", "-translate-y-2");
+          setTimeout(function () {
+            if (toast.parentNode) {
+              toast.parentNode.removeChild(toast);
+            }
+          }, 220);
+        }, 2000);
+      }
+
+      /**
+       * 兼容性文本复制（同时支持 iframe 环境）
+       */
+      function copyTextToClipboard(text, successMsg) {
+        if (!text) {
+          showToast("没有可复制的内容", "error");
+          return;
+        }
+
+        const textarea = document.createElement("textarea");
+        textarea.value = text;
+        textarea.setAttribute("readonly", "");
+        textarea.style.position = "fixed";
+        textarea.style.top = "-9999px";
+        textarea.style.left = "-9999px";
+        document.body.appendChild(textarea);
+        textarea.select();
+
+        let copied = false;
+        try {
+          copied = document.execCommand("copy");
+        } catch (err) {
+          copied = false;
+        }
+        document.body.removeChild(textarea);
+
+        if (copied) {
+          showToast(successMsg || "已复制到剪贴板");
+        } else if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(text).then(function () {
+            showToast(successMsg || "已复制到剪贴板");
+          }).catch(function () {
+            showToast("复制失败，请手动选择复制", "error");
+          });
+        } else {
+          showToast("复制失败，请手动选择复制", "error");
+        }
+      }
+
+      /**
+       * 历史记录管理
+       */
+      function loadHistory() {
+        try {
+          const raw = localStorage.getItem(STORAGE_KEY_HISTORY);
+          if (raw) {
+            const parsed = JSON.parse(raw);
+            if (Array.isArray(parsed)) {
+              state.history = parsed.slice(0, 30);
+            }
+          }
+        } catch (e) {
+          state.history = [];
+        }
+      }
+
+      function saveHistory() {
+        try {
+          localStorage.setItem(STORAGE_KEY_HISTORY, JSON.stringify(state.history.slice(0, 30)));
+        } catch (e) {
+          // 忽略存储限制错误
+        }
+      }
+
+      function addHistoryItem(idStr) {
+        state.history.unshift(idStr);
+        if (state.history.length > 30) {
+          state.history.length = 30;
+        }
+        saveHistory();
+        renderHistory();
+      }
+
+      function renderHistory() {
+        els.historyList.innerHTML = "";
+        if (state.history.length === 0) {
+          const empty = document.createElement("li");
+          empty.className = "text-xs text-slate-400 dark:text-slate-500 text-center py-8";
+          empty.textContent = "暂无生成记录";
+          els.historyList.appendChild(empty);
+          return;
+        }
+
+        state.history.forEach(function (item) {
+          const li = document.createElement("li");
+          li.className = "group flex items-center justify-between gap-2 px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200/80 dark:border-slate-800 hover:border-indigo-400 dark:hover:border-indigo-500 transition";
+
+          const code = document.createElement("code");
+          code.className = "font-mono text-xs text-slate-700 dark:text-slate-300 truncate";
+          code.textContent = item;
+
+          const btn = document.createElement("button");
+          btn.type = "button";
+          btn.className = "text-[11px] font-medium px-2 py-1 rounded-lg bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-400 border border-slate-200 dark:border-slate-700 shrink-0 transition";
+          btn.textContent = "复制";
+          btn.addEventListener("click", function () {
+            copyTextToClipboard(item, "已复制: " + item);
+          });
+
+          li.appendChild(code);
+          li.appendChild(btn);
+          els.historyList.appendChild(li);
+        });
+      }
+
+      /**
+       * 生成同步的 JavaScript 代码展示文本
+       */
+      function buildCodeSnippet() {
+        const d = state.digits;
+        if (state.format === "compact" && state.tzMode === "local") {
+          return [
+            "function generateCustomUuid(date = new Date(), digits = " + d + ") {",
+            "  const pad = (n, len = 2) => String(Math.floor(Math.abs(n))).padStart(len, '0');",
+            "  const offsetMin = -date.getTimezoneOffset();",
+            "  const sign = offsetMin >= 0 ? '' : '-';",
+            "  const absMin = Math.abs(offsetMin);",
+            "  const iso = `${date.getFullYear()}${pad(date.getMonth() + 1)}${pad(date.getDate())}` +",
+            "    `T${pad(date.getHours())}${pad(date.getMinutes())}${pad(date.getSeconds())}` +",
+            "    `${sign}${pad(Math.floor(absMin / 60))}${pad(absMin % 60)}`;",
+            "  const rand = String(Math.floor(Math.random() * (10 ** digits))).padStart(digits, '0');",
+            "  return `${iso}_${rand}`;",
+            "}",
+            "",
+            "// 示例输出: " + els.singleUuidDisplay.textContent.trim(),
+            "console.log(generateCustomUuid());"
+          ].join("\n");
+        }
+
+        if (state.format === "compact" && state.tzMode === "utc") {
+          return [
+            "function generateCustomUuid(date = new Date(), digits = " + d + ") {",
+            "  const pad = (n, len = 2) => String(Math.floor(Math.abs(n))).padStart(len, '0');",
+            "  const iso = `${date.getUTCFullYear()}${pad(date.getUTCMonth() + 1)}${pad(date.getUTCDate())}` +",
+            "    `T${pad(date.getUTCHours())}${pad(date.getUTCMinutes())}${pad(date.getUTCSeconds())}Z`;",
+            "  const rand = String(Math.floor(Math.random() * (10 ** digits))).padStart(digits, '0');",
+            "  return `${iso}_${rand}`;",
+            "}",
+            "",
+            "// 示例输出: " + els.singleUuidDisplay.textContent.trim(),
+            "console.log(generateCustomUuid());"
+          ].join("\n");
+        }
+
+        if (state.format === "standard" && state.tzMode === "local") {
+          return [
+            "function generateCustomUuid(date = new Date(), digits = " + d + ") {",
+            "  const pad = (n, len = 2) => String(Math.floor(Math.abs(n))).padStart(len, '0');",
+            "  const offsetMin = -date.getTimezoneOffset();",
+            "  const sign = offsetMin >= 0 ? '+' : '-';",
+            "  const absMin = Math.abs(offsetMin);",
+            "  const iso = `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}` +",
+            "    `T${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}` +",
+            "    `${sign}${pad(Math.floor(absMin / 60))}:${pad(absMin % 60)}`;",
+            "  const rand = String(Math.floor(Math.random() * (10 ** digits))).padStart(digits, '0');",
+            "  return `${iso}_${rand}`;",
+            "}",
+            "",
+            "// 示例输出: " + els.singleUuidDisplay.textContent.trim(),
+            "console.log(generateCustomUuid());"
+          ].join("\n");
+        }
+
+        return [
+          "function generateCustomUuid(date = new Date(), digits = " + d + ") {",
+          "  const iso = date.toISOString().slice(0, 19) + 'Z';",
+          "  const rand = String(Math.floor(Math.random() * (10 ** digits))).padStart(digits, '0');",
+          "  return `${iso}_${rand}`;",
+          "}",
+          "",
+          "// 示例输出: " + els.singleUuidDisplay.textContent.trim(),
+          "console.log(generateCustomUuid());"
+        ].join("\n");
+      }
+
+      /**
+       * 同步刷新配置面板样式与提示徽章
+       */
+      function syncConfigUI() {
+        const activeBtnClass = "border-indigo-600 bg-indigo-50/70 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300";
+        const inactiveBtnClass = "border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950 text-slate-700 dark:text-slate-300 hover:border-slate-300 dark:hover:border-slate-700";
+
+        // 格式按钮高亮
+        els.btnFmtCompact.className = "px-3.5 py-2.5 rounded-xl border text-left transition flex items-center justify-between " +
+          (state.format === "compact" ? activeBtnClass : inactiveBtnClass);
+        els.btnFmtStandard.className = "px-3.5 py-2.5 rounded-xl border text-left transition flex items-center justify-between " +
+          (state.format === "standard" ? activeBtnClass : inactiveBtnClass);
+
+        const compactDot = els.btnFmtCompact.querySelector(".fmt-dot");
+        const standardDot = els.btnFmtStandard.querySelector(".fmt-dot");
+        if (compactDot) {
+          compactDot.className = "fmt-dot w-2.5 h-2.5 rounded-full " + (state.format === "compact" ? "bg-indigo-600" : "bg-slate-300 dark:bg-slate-700");
+        }
+        if (standardDot) {
+          standardDot.className = "fmt-dot w-2.5 h-2.5 rounded-full " + (state.format === "standard" ? "bg-indigo-600" : "bg-slate-300 dark:bg-slate-700");
+        }
+
+        // 时区按钮高亮
+        els.btnTzLocal.className = "px-3 py-2.5 rounded-xl border text-xs font-medium transition " +
+          (state.tzMode === "local" ? activeBtnClass : inactiveBtnClass);
+        els.btnTzUtc.className = "px-3 py-2.5 rounded-xl border text-xs font-medium transition " +
+          (state.tzMode === "utc" ? activeBtnClass : inactiveBtnClass);
+
+        // 随机数位数标签
+        const maxRange = "9".repeat(state.digits);
+        const minRange = "0".repeat(state.digits);
+        els.digitsLabel.textContent = state.digits + " 位 (" + minRange + "–" + maxRange + ")";
+
+        // 格式徽章说明
+        const timePattern = state.format === "compact"
+          ? (state.tzMode === "local" ? "YYYYMMDDTHHmmss+HHMM" : "YYYYMMDDTHHmmssZ")
+          : (state.tzMode === "local" ? "YYYY-MM-DDTHH:mm:ss+HH:MM" : "YYYY-MM-DDTHH:mm:ssZ");
+        els.formatBadge.textContent = timePattern + "_" + state.digits + "位随机数";
+
+        // 更新代码预览
+        els.codePreview.textContent = buildCodeSnippet();
+      }
+
+      /**
+       * 生成单条 ID 并更新界面
+       */
+      function refreshSingleId(recordHistory, autoCopy) {
+        const newId = generateCustomId({
+          digits: state.digits,
+          mode: state.tzMode,
+          format: state.format,
+          date: new Date()
+        });
+        els.singleUuidDisplay.textContent = newId;
+        els.codePreview.textContent = buildCodeSnippet();
+
+        if (recordHistory) {
+          addHistoryItem(newId);
+        }
+        if (autoCopy) {
+          copyTextToClipboard(newId, "已生成并复制: " + newId);
+        }
+      }
+
+      /**
+       * 更新右上角实时时钟
+       */
+      function updateLiveClock() {
+        const now = new Date();
+        els.liveClock.textContent = formatIsoTimestamp(now, state.tzMode, state.format);
+      }
+
+      /**
+       * 初始化明暗主题
+       */
+      function initTheme() {
+        let savedTheme = null;
+        try {
+          savedTheme = localStorage.getItem(STORAGE_KEY_THEME);
+        } catch (e) {
+          savedTheme = null;
+        }
+
+        const prefersDark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+        if (savedTheme === "dark" || (!savedTheme && prefersDark)) {
+          document.documentElement.classList.add("dark");
+        } else {
+          document.documentElement.classList.remove("dark");
+        }
+      }
+
+      /**
+       * 绑定所有交互事件
+       */
+      function bindEvents() {
+        // 明暗主题切换
+        els.btnThemeToggle.addEventListener("click", function () {
+          const isDark = document.documentElement.classList.toggle("dark");
+          try {
+            localStorage.setItem(STORAGE_KEY_THEME, isDark ? "dark" : "light");
+          } catch (e) {
+            // 忽略存储异常
+          }
+        });
+
+        // 单条生成与复制
+        els.btnGenerateSingle.addEventListener("click", function () {
+          refreshSingleId(true, false);
+        });
+
+        els.btnGenerateAndCopy.addEventListener("click", function () {
+          refreshSingleId(true, true);
+        });
+
+        els.btnCopySingle.addEventListener("click", function () {
+          copyTextToClipboard(els.singleUuidDisplay.textContent.trim(), "已复制当前 UUID");
+        });
+
+        // 批量生成
+        els.btnBatchGenerate.addEventListener("click", function () {
+          let count = parseInt(els.batchCount.value, 10);
+          if (isNaN(count) || count < 1) {
+            count = 1;
+          } else if (count > 500) {
+            count = 500;
+          }
+          els.batchCount.value = String(count);
+
+          const now = new Date();
+          const list = [];
+          for (let i = 0; i < count; i++) {
+            list.push(generateCustomId({
+              digits: state.digits,
+              mode: state.tzMode,
+              format: state.format,
+              date: now
+            }));
+          }
+
+          els.batchOutput.value = list.join("\n");
+          els.batchStatus.textContent = "已生成 " + count + " 条记录";
+          showToast("成功批量生成 " + count + " 条 UUID");
+        });
+
+        // 复制批量结果
+        els.btnCopyBatch.addEventListener("click", function () {
+          copyTextToClipboard(els.batchOutput.value, "已复制全部批量结果");
+        });
+
+        // 导出 TXT 文件
+        els.btnDownloadBatch.addEventListener("click", function () {
+          const content = els.batchOutput.value.trim();
+          if (!content) {
+            showToast("请先批量生成数据再导出", "error");
+            return;
+          }
+          const blob = new Blob([content + "\n"], { type: "text/plain;charset=utf-8" });
+          const url = URL.createObjectURL(blob);
+          const link = document.createElement("a");
+          const fileStamp = formatIsoTimestamp(new Date(), state.tzMode, "compact");
+          link.href = url;
+          link.download = "uuid_" + fileStamp + ".txt";
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+          URL.revokeObjectURL(url);
+          showToast("已开始下载 TXT 文件");
+        });
+
+        // 复制示例代码
+        els.btnCopyCode.addEventListener("click", function () {
+          copyTextToClipboard(els.codePreview.textContent, "已复制 JavaScript 代码");
+        });
+
+        // 切换紧凑 / 标准格式
+        els.btnFmtCompact.addEventListener("click", function () {
+          state.format = "compact";
+          syncConfigUI();
+          updateLiveClock();
+          refreshSingleId(false, false);
+        });
+
+        els.btnFmtStandard.addEventListener("click", function () {
+          state.format = "standard";
+          syncConfigUI();
+          updateLiveClock();
+          refreshSingleId(false, false);
+        });
+
+        // 切换本地时区 / UTC
+        els.btnTzLocal.addEventListener("click", function () {
+          state.tzMode = "local";
+          syncConfigUI();
+          updateLiveClock();
+          refreshSingleId(false, false);
+        });
+
+        els.btnTzUtc.addEventListener("click", function () {
+          state.tzMode = "utc";
+          syncConfigUI();
+          updateLiveClock();
+          refreshSingleId(false, false);
+        });
+
+        // 调整随机数位数
+        els.digitsRange.addEventListener("input", function () {
+          state.digits = parseInt(els.digitsRange.value, 10) || 3;
+          syncConfigUI();
+          refreshSingleId(false, false);
+        });
+
+        // 清空历史记录
+        els.btnClearHistory.addEventListener("click", function () {
+          state.history = [];
+          saveHistory();
+          renderHistory();
+          showToast("已清空历史记录");
+        });
+      }
+
+      /**
+       * 应用启动入口
+       */
+      function initApp() {
+        initTheme();
+        loadHistory();
+        syncConfigUI();
+        updateLiveClock();
+        setInterval(updateLiveClock, 1000);
+        bindEvents();
+        refreshSingleId(true, false);
+        renderHistory();
+      }
+
+      if (document.readyState === "loading") {
+        document.addEventListener("DOMContentLoaded", initApp);
+      } else {
+        initApp();
+      }
+    })();
+  </script>
+</body>
+</html>
