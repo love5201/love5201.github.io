@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="referrer" content="strict-origin-when-cross-origin" />
+  <title>YouTube Embed Proxy</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      width: 100%;
+      height: 100%;
+      background: #000;
+      overflow: hidden;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
+    iframe {
+      width: 100%;
+      height: 100%;
+      border: 0;
+      display: block;
+    }
+    .msg {
+      color: #ccc;
+      font-size: 14px;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+  <div id="player-container" style="width:100%;height:100%;"></div>
+  <script>
+    (function () {
+      const params = new URLSearchParams(window.location.search);
+      const vid = (params.get("v") || "").trim();
+      const start = (params.get("start") || "").trim();
+      const end = (params.get("end") || "").trim();
+      const autoplay = (params.get("autoplay") || "").trim();
+      const useStd = params.get("nocookie") === "0";
+
+      const container = document.getElementById("player-container");
+      if (!vid || !/^[a-zA-Z0-9_-]{6,20}$/.test(vid)) {
+        container.innerHTML = '<div class="msg">缺少有效的视频参数 ?v=VIDEO_ID</div>';
+        return;
+      }
+
+      const embedParams = new URLSearchParams();
+      if (start && /^\d+$/.test(start)) embedParams.set("start", start);
+      if (end && /^\d+$/.test(end)) embedParams.set("end", end);
+      if (autoplay === "1") embedParams.set("autoplay", "1");
+      embedParams.set("rel", "0");
+      embedParams.set("playsinline", "1");
+
+      const host = useStd ? "https://www.youtube.com" : "https://www.youtube-nocookie.com";
+      const qs = embedParams.toString();
+      const src = `${host}/embed/${encodeURIComponent(vid)}${qs ? "?" + qs : ""}`;
+
+      const iframe = document.createElement("iframe");
+      iframe.src = src;
+      iframe.title = "YouTube video player";
+      iframe.setAttribute("referrerpolicy", "strict-origin-when-cross-origin");
+      iframe.setAttribute(
+        "allow",
+        "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+      );
+      iframe.allowFullscreen = true;
+      container.appendChild(iframe);
+    })();
+  </script>
+</body>
+</html>
